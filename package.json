@@ -1,0 +1,10 @@
+{
+  "name": "sasahin",
+  "version": "1.0.0",
+  "description": "問い合わせメールを Gemini で要約し Notion に登録する Google Apps Script (テスト付き)",
+  "private": true,
+  "scripts": {
+    "test": "node --test"
+  },
+  "license": "MIT"
+}
