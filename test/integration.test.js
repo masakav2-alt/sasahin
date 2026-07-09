@@ -21,6 +21,11 @@ test('callGemini: 200 でテキストを返す', () => {
   assert.equal(out, '結果テキスト');
   assert.equal(fetch.requests.length, 1);
   assert.ok(!fetch.requests[0].url.includes(' ')); // URL に生キーが安全に入っている
+
+  // 出力トークン上限と低温度が設定されている（トークン削減 + 形式安定化）
+  const payload = JSON.parse(fetch.requests[0].options.payload);
+  assert.equal(payload.generationConfig.maxOutputTokens, code.CONFIG.GEMINI_MAX_OUTPUT_TOKENS);
+  assert.equal(payload.generationConfig.temperature, code.CONFIG.GEMINI_TEMPERATURE);
 });
 
 test('callGemini: 429 をリトライして最終的に成功', () => {
@@ -228,6 +233,77 @@ test('autoEmailToNotion: Notion保存失敗時は既読化せずID記録しな�
 
   assert.equal(thread.state.read, false);
   assert.deepEqual(JSON.parse(ctx.props._store.PROCESSED_MESSAGE_IDS), []);
+});
+
+test('autoEmailToNotion: 引用・署名は圧縮されて Gemini に送られない', () => {
+  const msg = m.makeMessage({
+    id: 'compress-1', subject: '問い合わせ: 見積もり', from: 'Taro <t@e.com>',
+    date: new Date(2026, 5, 15),
+    plainBody: [
+      'お見積もりの再送をお願いします。締切は7月20日です。',
+      '',
+      '--',
+      '株式会社サンプル 山田',
+      '',
+      '2026年6月14日(土) 09:00 Taro <t@e.com>:',
+      '> 前回のお見積もりです。',
+      '> ご確認ください。'
+    ].join('\n')
+  });
+  const thread = m.makeThread([msg]);
+
+  let geminiPrompt = '';
+  const ctx = setupFullRun({
+    threads: [thread],
+    properties: {
+      GEMINI_API_KEY: 'g', NOTION_API_KEY: 'n', NOTION_DATABASE_ID: 'db',
+      PROCESSED_MESSAGE_IDS: '[]'
+    },
+    fetchHandler: (url, options) => {
+      if (url.includes('generativelanguage')) {
+        geminiPrompt = JSON.parse(options.payload).contents[0].parts[0].text;
+        return { status: 200, body: m.geminiResponse('要約: 見積もり再送依頼。\n締切日: 2026-07-20') };
+      }
+      return { status: 200, body: '{}' };
+    }
+  });
+
+  ctx.code.autoEmailToNotion();
+
+  assert.ok(geminiPrompt.includes('お見積もりの再送'), '用件は送られる');
+  assert.ok(!geminiPrompt.includes('株式会社サンプル'), '署名は送られない');
+  assert.ok(!geminiPrompt.includes('前回のお見積もり'), '引用チェーンは送られない');
+  assert.equal(thread.state.read, true, '処理自体は正常に完了する');
+});
+
+test('autoEmailToNotion: 圧縮で本文が消えるメールは原文で処理（品質フォールバック）', () => {
+  // 本文が引用のみのメール: 圧縮すると空になるが、原文で LLM 処理される
+  const msg = m.makeMessage({
+    id: 'quote-only-1', subject: '問い合わせ', from: 'a@e.com',
+    date: new Date(2026, 5, 15),
+    plainBody: '> 引用だけで構成された十分な長さの本文です。\n> ご確認をお願いします。'
+  });
+  const thread = m.makeThread([msg]);
+
+  let geminiPrompt = '';
+  const ctx = setupFullRun({
+    threads: [thread],
+    properties: {
+      GEMINI_API_KEY: 'g', NOTION_API_KEY: 'n', NOTION_DATABASE_ID: 'db',
+      PROCESSED_MESSAGE_IDS: '[]'
+    },
+    fetchHandler: (url, options) => {
+      if (url.includes('generativelanguage')) {
+        geminiPrompt = JSON.parse(options.payload).contents[0].parts[0].text;
+        return { status: 200, body: m.geminiResponse('要約: ok\n締切日: なし') };
+      }
+      return { status: 200, body: '{}' };
+    }
+  });
+
+  ctx.code.autoEmailToNotion();
+  assert.ok(geminiPrompt.includes('引用だけで構成された'), '原文にフォールバックして処理される');
+  assert.equal(thread.state.read, true);
 });
 
 test('autoEmailToNotion: PlainBody空ならHTMLをsanitizeして使用', () => {

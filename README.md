@@ -58,3 +58,7 @@ GAS 固有 API（`GmailApp` / `UrlFetchApp` / `PropertiesService` / `LockService
 8. **Notion 文字数上限対策** — タイトル / リッチテキストを 2000 文字で安全に切り詰め。
 9. **設定の定数化** — マジックナンバーを `CONFIG` / `PROP_KEYS` に集約。
 10. **テスト容易性** — 副作用を持つ処理と純粋ロジックを分離し、自動テストを整備。
+11. **LLM トークン削減** — 引用・署名・URL 等を送信前に除去（`compressBody`）、
+    先頭+末尾保持の切り詰め、プロンプト短縮、`maxOutputTokens` 上限を導入。
+    要約品質を維持したまま典型ケースで送信トークンを 40〜70% 削減。
+    詳細と実測結果は [`docs/token-reduction.md`](docs/token-reduction.md) を参照。

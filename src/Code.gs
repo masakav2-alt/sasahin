@@ -18,6 +18,8 @@ var CONFIG = {
   EXECUTION_TIME_LIMIT_MS: 5 * 60 * 1000, // 5分
   MAX_PROCESSED_IDS: 500,                 // 重複防止IDの保持上限（プロパティ9KB制限対策）
   GEMINI_MODEL: 'gemini-1.5-flash',
+  GEMINI_MAX_OUTPUT_TOKENS: 256,          // 要約3行+締切日で十分な上限（出力トークン浪費防止）
+  GEMINI_TEMPERATURE: 0.1,                // 低温度で形式遵守を安定させる
   NOTION_VERSION: '2022-06-28',
   GEMINI_RETRIES: 3,
   NOTION_RETRIES: 3,
@@ -91,7 +93,15 @@ function autoEmailToNotion() {
           rawBody = sanitizeHtml(lastMessage.getBody());
         }
 
-        var truncated = truncateBody(rawBody, CONFIG.MAX_BODY_LENGTH);
+        // 引用・署名・URL 等を除去してから切り詰める（Gemini へ送るトークンを削減）
+        var compressed = compressBody(rawBody);
+        if (compressed.length < CONFIG.MIN_BODY_LENGTH &&
+            rawBody.trim().length >= CONFIG.MIN_BODY_LENGTH) {
+          // 圧縮で本文が消えた場合（引用のみのメール等）は原文に戻す
+          compressed = rawBody.trim();
+        }
+
+        var truncated = truncateBody(compressed, CONFIG.MAX_BODY_LENGTH);
         var body = truncated.body;
         if (truncated.wasTruncated) {
           logger.log('⚠️ Email body truncated: ' + subject);
@@ -173,14 +183,68 @@ function autoEmailToNotion() {
  */
 function buildPrompt(body) {
   return [
-    '以下のメール本文を日本語で要約してください。',
-    '次の形式で厳密に出力してください（余計な説明は不要）:',
-    '要約: <3行程度の要約>',
-    '締切日: <YYYY-MM-DD 形式。締切が無ければ「なし」>',
+    '次のメール本文を日本語で要約し、この形式のみで出力:',
+    '要約: <3行程度>',
+    '締切日: <YYYY-MM-DD、無ければ「なし」>',
     '',
-    'メール本文:',
+    '本文:',
     body
   ].join('\n');
+}
+
+/**
+ * LLM へ渡す前に、要約品質に寄与しない定型部分を本文から除去してトークンを削減する。
+ * 問い合わせ内容そのものは変更しない。
+ *  - 返信引用ヘッダ（"On ... wrote:" / "-----Original Message-----" / Gmail 日本語形式）以降
+ *  - "> " で始まる引用行
+ *  - 署名区切り（"-- " 行）以降
+ *  - URL（[URL] プレースホルダに置換）
+ *  - 装飾罫線行・連続重複行・過剰な空白
+ */
+function compressBody(body) {
+  if (!body) return '';
+  var text = String(body).replace(/\r\n/g, '\n');
+
+  // 1) 返信引用ヘッダ以降を切り落とす（過去のやり取りは要約対象外）
+  var quoteHeaders = [
+    /^-{2,}\s*Original Message\s*-{2,}\s*$/im,
+    /^-{2,}\s*Forwarded message\s*-{2,}\s*$/im,
+    /^-{2,}\s*(元の|転送)メッセージ\s*-{2,}\s*$/im,
+    /^On .+ wrote:\s*$/im,
+    /^\d{4}年\d{1,2}月\d{1,2}日\D.*[<＜][^>＞]+[>＞]\s*[:：]?\s*$/im
+  ];
+  var cutAt = -1;
+  for (var i = 0; i < quoteHeaders.length; i++) {
+    var m = text.match(quoteHeaders[i]);
+    if (m && (cutAt === -1 || m.index < cutAt)) cutAt = m.index;
+  }
+  if (cutAt !== -1) text = text.slice(0, cutAt);
+
+  // 2) "> " 引用行を除去
+  text = text.replace(/^[ \t]*>.*$/gm, '');
+
+  // 3) 署名区切り以降を除去（"-- " は標準的な署名デリミタ）
+  var sig = text.match(/^--[ \t]*$/m);
+  if (sig) text = text.slice(0, sig.index);
+
+  // 4) URL をプレースホルダに置換（URL 全文は要約に不要でトークンを浪費する）
+  text = text.replace(/https?:\/\/[^\s<>"'）)】]+/g, '[URL]');
+
+  // 5) 装飾罫線行（──── / ==== / ＊＊＊＊ 等）を除去
+  text = text.replace(/^[ \t]*[-=＝*＊_＿─━#＃~〜■□●○◆◇♪]{6,}[ \t]*$/gm, '');
+
+  // 6) 連続する同一行を1行に圧縮（定型フッターの繰り返し対策）
+  var lines = text.split('\n');
+  var deduped = [];
+  for (var j = 0; j < lines.length; j++) {
+    var line = lines[j].replace(/[ \t]+$/, '');
+    if (line !== '' && deduped.length > 0 && deduped[deduped.length - 1] === line) continue;
+    deduped.push(line);
+  }
+  text = deduped.join('\n');
+
+  // 7) 空白の圧縮
+  return text.replace(/[ \t]{2,}/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
 }
 
 /**
@@ -233,13 +297,17 @@ function parseGeminiResult(result) {
 }
 
 /**
- * 本文を最大長に切り詰める。切り詰めた場合は注記を付与。
+ * 本文を最大長に切り詰める。
+ * 冒頭に用件、末尾に締切・連絡先が書かれることが多いため、
+ * 先頭 75% + 末尾 25% を残す（単純な先頭切りより情報落ちが少ない）。
  */
 function truncateBody(body, maxLength) {
   if (!body) return { body: '', wasTruncated: false };
   if (body.length <= maxLength) return { body: body, wasTruncated: false };
+  var headLen = Math.ceil(maxLength * 0.75);
+  var tailLen = maxLength - headLen;
   return {
-    body: body.substring(0, maxLength) + '...\n\n【本文が長すぎるため、省略されています】',
+    body: body.slice(0, headLen) + '\n…(中略)…\n' + (tailLen > 0 ? body.slice(-tailLen) : ''),
     wasTruncated: true
   };
 }
@@ -353,7 +421,13 @@ function callGemini(prompt, apiKey, maxRetries, logger) {
   var options = {
     method: 'post',
     contentType: 'application/json',
-    payload: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
+    payload: JSON.stringify({
+      contents: [{ parts: [{ text: prompt }] }],
+      generationConfig: {
+        temperature: CONFIG.GEMINI_TEMPERATURE,
+        maxOutputTokens: CONFIG.GEMINI_MAX_OUTPUT_TOKENS
+      }
+    }),
     muteHttpExceptions: true
   };
 
@@ -568,6 +642,7 @@ if (typeof module !== 'undefined' && module.exports) {
     PROP_KEYS: PROP_KEYS,
     autoEmailToNotion: autoEmailToNotion,
     buildPrompt: buildPrompt,
+    compressBody: compressBody,
     parseGeminiResult: parseGeminiResult,
     truncateBody: truncateBody,
     extractSenderName: extractSenderName,

@@ -110,11 +110,13 @@ test('truncateBody: 上限以下はそのまま', () => {
   assert.equal(r.wasTruncated, false);
 });
 
-test('truncateBody: 上限超過で切り詰め＋注記', () => {
-  const r = code.truncateBody('x'.repeat(50), 10);
+test('truncateBody: 上限超過で先頭+末尾を保持して切り詰め', () => {
+  const body = 'H'.repeat(40) + 'T'.repeat(10);
+  const r = code.truncateBody(body, 20);
   assert.equal(r.wasTruncated, true);
-  assert.ok(r.body.startsWith('xxxxxxxxxx'));
-  assert.ok(r.body.includes('省略'));
+  assert.ok(r.body.startsWith('H'.repeat(15)), '先頭75%を保持');
+  assert.ok(r.body.endsWith('T'.repeat(5)), '末尾25%を保持（締切等が末尾にあっても残る）');
+  assert.ok(r.body.includes('中略'));
 });
 
 test('truncateBody: 空入力', () => {
@@ -163,6 +165,65 @@ test('buildNotionProperties: messageId 無しなら メールID 無し', () => {
   );
   assert.equal('メールID' in props, false);
   assert.equal('締切日' in props, false);
+});
+
+// ---- compressBody（トークン削減） ----
+
+test('compressBody: "> " 引用行と返信ヘッダ以降を除去', () => {
+  const body = [
+    '田中様',
+    'お見積もりの件、承知しました。7月20日までに回答します。',
+    '',
+    '2026年7月8日(水) 15:30 田中 <tanaka@example.com>:',
+    '> 先日の件ですが、お見積もりをお願いできますか。',
+    '> よろしくお願いします。'
+  ].join('\n');
+  const out = code.compressBody(body);
+  assert.ok(out.includes('お見積もりの件'));
+  assert.ok(!out.includes('先日の件ですが'), '引用チェーンは除去される');
+  assert.ok(!out.includes('2026年7月8日'), '引用ヘッダも除去される');
+});
+
+test('compressBody: "On ... wrote:" 形式の引用ヘッダ以降を除去', () => {
+  const body = '返信本文です。よろしくお願いします。\n\nOn Tue, Jul 7, 2026 at 10:00 AM Taro <t@e.com> wrote:\n> 元のメッセージ';
+  const out = code.compressBody(body);
+  assert.ok(out.includes('返信本文'));
+  assert.ok(!out.includes('元のメッセージ'));
+});
+
+test('compressBody: 署名区切り "-- " 以降を除去', () => {
+  const body = '本文はこちらです。ご確認ください。\n\n--\n株式会社サンプル 営業部\n山田 太郎\nTEL: 03-0000-0000';
+  const out = code.compressBody(body);
+  assert.ok(out.includes('本文はこちら'));
+  assert.ok(!out.includes('株式会社サンプル'));
+  assert.ok(!out.includes('TEL'));
+});
+
+test('compressBody: URL をプレースホルダに置換', () => {
+  const out = code.compressBody('詳細はこちら https://example.com/very/long/path?utm_source=mail&id=12345 をご覧ください。');
+  assert.ok(out.includes('[URL]'));
+  assert.ok(!out.includes('utm_source'));
+  assert.ok(out.includes('ご覧ください'));
+});
+
+test('compressBody: 装飾罫線・連続重複行・過剰な空行を圧縮', () => {
+  const body = '━━━━━━━━━━\nお知らせ\nお知らせ\n\n\n\n本文です。\n==========';
+  const out = code.compressBody(body);
+  assert.ok(!out.includes('━'));
+  assert.ok(!out.includes('='));
+  assert.equal((out.match(/お知らせ/g) || []).length, 1, '連続重複行は1行に');
+  assert.ok(!out.includes('\n\n\n'));
+});
+
+test('compressBody: 本文そのものは変更しない', () => {
+  const body = '7月15日までに 2026-07-15 締切で回答をお願いします。金額は 1,000円 です。';
+  assert.equal(code.compressBody(body), body);
+});
+
+test('compressBody: 空入力は空文字', () => {
+  assert.equal(code.compressBody(''), '');
+  assert.equal(code.compressBody(null), '');
+  assert.equal(code.compressBody(undefined), '');
 });
 
 test('buildPrompt: 構造化出力を要求', () => {
