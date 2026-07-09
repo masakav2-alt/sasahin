@@ -7,6 +7,7 @@ Google Apps Script による自動化スクリプトを、Node.js のテスト�
 | [問い合わせメール → Notion 自動登録](#問い合わせメール--notion-自動登録) | [`src/Code.gs`](src/Code.gs) | `test/unit.test.js` / `test/integration.test.js` |
 | [仮想通貨ペーパートレードボット](#仮想通貨ペーパートレードボット) | [`src/CryptoBot.gs`](src/CryptoBot.gs) | `test/crypto-unit.test.js` / `test/crypto-integration.test.js` |
 | [SasaCoin — 独自仮想通貨(教育用ブロックチェーン)](#sasacoin--独自仮想通貨教育用ブロックチェーン) | [`src/SasaCoin.js`](src/SasaCoin.js) | `test/coin.test.js` |
+| [BTC マイニングシステム(研究・実装)](#btc-マイニングシステム研究実装) | [`src/BtcMiner.js`](src/BtcMiner.js) | `test/btc-miner.test.js` |
 
 ## 問い合わせメール → Notion 自動登録
 
@@ -147,6 +148,78 @@ chain.getBalanceOfAddress(alice.address);       // 30
 chain.isChainValid();                           // true
 ```
 
+## BTC マイニングシステム(研究・実装)
+
+実際の Bitcoin プロトコルに準拠したマイニング実装です。ブロックヘッダの構築・
+double SHA-256 ハッシュ・compact bits 形式の難易度エンコーディング・マークルルート
+計算・nonce 探索(Proof of Work)を、依存パッケージなしで忠実に実装しています。
+
+**実装の正しさは「本物の Bitcoin ブロックのハッシュを再現できること」で検証済み**:
+ジェネシスブロック(2009-01-03)とブロック #125552(2011-05-21)のヘッダから、
+実物と完全一致するブロックハッシュが得られます(`test/btc-miner.test.js`)。
+
+- 本体: [`src/BtcMiner.js`](src/BtcMiner.js)(Node.js 標準の `node:crypto` のみ使用)
+- デモ: `node src/btc-miner-demo.js` — 実ブロック再現 → 低難易度の実採掘 →
+  CPU ハッシュレート実測 → 経済性試算まで一気に確認
+- テスト: `test/btc-miner.test.js`
+
+### 研究まとめ: BTC マイニングの仕組み
+
+1. **ブロックヘッダ(80バイト)**: version / 前ブロックハッシュ / マークルルート /
+   時刻 / bits(難易度) / nonce
+2. **Proof of Work**: ヘッダの double SHA-256 が bits から導かれるターゲット値以下に
+   なる nonce を総当たりで探索する
+3. **新規発行**: 採掘成功者はブロック内のコインベーストランザクションで
+   報酬(2024年半減期以降 3.125 BTC)+手数料を得る
+4. **難易度調整**: 2016 ブロック(約2週間)ごとに、ブロック生成が平均10分になるよう調整
+5. **実運用**: 現在はプールマイニング(Stratum プロトコル)+ ASIC が前提
+
+### 研究まとめ: 経済性(2026年7月時点の実データ)
+
+| 項目 | 値 |
+| --- | --- |
+| ネットワーク難易度 | 約 124.9 兆 |
+| ネットワーク全体のハッシュレート | 約 929 EH/s |
+| ブロック報酬 | 3.125 BTC |
+| BTC 価格 | 約 62,000 USD ≈ ¥1,000万 |
+
+`estimateMiningEconomics` による試算(デモで実測値から計算):
+
+| 環境 | 期待収益/日 | 電気代/日 | 損益/日 |
+| --- | --- | --- | --- |
+| CPU (~240 kH/s, 65W, 日本 ¥31/kWh) | ≈ ¥0(1ブロックに約700億年) | ¥48 | **赤字** |
+| ASIC 200 TH/s, 3550W, 日本 ¥31/kWh | ¥1,007 | ¥2,641 | **▲¥1,635** |
+| ASIC 200 TH/s, 3550W, ¥8/kWh の地域 | ¥1,007 | ¥682 | +¥325 |
+
+**結論**: BTC マイニングは「安価な電力 × ASIC × プール参加」がそろって初めて成立します。
+日本の家庭用電気料金では最新 ASIC でも赤字であり、CPU/GPU での採掘は経済的に成立しません。
+個人が仮想通貨を得る現実的な選択肢は、プール/クラウドマイニングの損益を上記の式で
+冷静に試算すること、または本リポジトリのペーパートレードボットのような
+取引アプローチの検証です。
+
+### 使い方
+
+```js
+const { mineHeader, headerHash, bitsToTarget, REGTEST_BITS,
+        estimateMiningEconomics } = require('./src/BtcMiner');
+
+// 低難易度(regtest 相当)で実際に採掘する
+const result = mineHeader({
+  version: 1,
+  prevHash: '00'.repeat(32),
+  merkleRoot: 'ab'.repeat(32),
+  time: Math.floor(Date.now() / 1000),
+  bits: REGTEST_BITS
+});
+// result: { found: true, nonce, hash, attempts, hashrate }
+
+// 収益性を試算する
+estimateMiningEconomics({
+  hashrateHps: 200e12, difficulty: 124.9e12, blockRewardBtc: 3.125,
+  btcPriceJpy: 10000000, powerWatts: 3550, electricityJpyPerKwh: 31
+});
+```
+
 ## テスト
 
 ```bash
@@ -162,6 +235,7 @@ GAS 固有 API（`GmailApp` / `UrlFetchApp` / `PropertiesService` / `LockService
 - `test/crypto-unit.test.js` — 仮想通貨ボット: 指標計算・シグナル判定・売買計算
 - `test/crypto-integration.test.js` — 仮想通貨ボット: CoinGecko / Notion 連携とフルフロー
 - `test/coin.test.js` — SasaCoin: 署名・マイニング・半減期・発行上限・改ざん検知
+- `test/btc-miner.test.js` — BtcMiner: 実ブロック再現・bits変換・マークルルート・採掘・経済性試算
 
 ## メール→Notion: オリジナルからの主な改善点
 
