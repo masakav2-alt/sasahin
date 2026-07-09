@@ -6,6 +6,7 @@ Google Apps Script による自動化スクリプトを、Node.js のテスト�
 | --- | --- | --- |
 | [問い合わせメール → Notion 自動登録](#問い合わせメール--notion-自動登録) | [`src/Code.gs`](src/Code.gs) | `test/unit.test.js` / `test/integration.test.js` |
 | [仮想通貨ペーパートレードボット](#仮想通貨ペーパートレードボット) | [`src/CryptoBot.gs`](src/CryptoBot.gs) | `test/crypto-unit.test.js` / `test/crypto-integration.test.js` |
+| [SasaCoin — 独自仮想通貨(教育用ブロックチェーン)](#sasacoin--独自仮想通貨教育用ブロックチェーン) | [`src/SasaCoin.js`](src/SasaCoin.js) | `test/coin.test.js` |
 
 ## 問い合わせメール → Notion 自動登録
 
@@ -98,6 +99,54 @@ Google Apps Script による自動化スクリプトを、Node.js のテスト�
 差し替えることで実売買へ拡張できます。シグナル判定・記録・通知はそのまま流用可能です。
 まずはペーパートレードで一定期間シグナルの成績を検証することを強く推奨します。
 
+## SasaCoin — 独自仮想通貨(教育用ブロックチェーン)
+
+仮想通貨を**生み出す**(新規発行する)仕組みをゼロから実装した、依存パッケージなしの
+Node.js 製ブロックチェーンです。新しいコインは **Proof of Work マイニングの報酬**として
+のみ発行され、ビットコインと同様に**半減期**と**発行上限**を持ちます。
+
+> ⚠️ **免責事項**: これはローカルで完結する教育用実装です。P2P ネットワーク・
+> 分散コンセンサス・取引所への上場を持たないため、実際の金銭価値のある通貨を
+> 生み出すものではありません。金銭価値を持たせるには、ネットワーク運用や
+> 既存チェーン上でのトークン発行(例: Ethereum の ERC-20)と、法規制
+> (資金決済法など)への対応が別途必要です。
+
+- 本体: [`src/SasaCoin.js`](src/SasaCoin.js)(Node.js 標準の `node:crypto` のみ使用)
+- デモ: `node src/coin-demo.js`
+- テスト: `test/coin.test.js`
+
+### 実装している仕組み
+
+| 要素 | 内容 |
+| --- | --- |
+| ウォレット | secp256k1 鍵ペア。公開鍵(DER hex)がアドレス |
+| トランザクション | ECDSA(SHA-256)署名付き送金。改ざん・なりすましを検証 |
+| 新規発行 | マイニング報酬(コインベース)としてのみ発行。勝手な発行は追加時・検証時の両方で拒否 |
+| Proof of Work | 先頭 N 桁が 0 のハッシュを nonce 探索(難易度は設定可能) |
+| 半減期 | `halvingInterval` ブロックごとに報酬が半減 |
+| 発行上限 | `maxSupply` 到達後は新規発行 0(取引処理は継続) |
+| 二重支払い防止 | 確定残高 − 保留中支出で検証 |
+| チェーン検証 | ハッシュ整合・PoW 条件・署名・報酬額の水増し・残高リプレイ(未発行コインの使用)を検知 |
+
+### 使い方
+
+```js
+const { Blockchain, Transaction, createWallet } = require('./src/SasaCoin');
+
+const chain = new Blockchain({ difficulty: 3, miningReward: 50, halvingInterval: 10, maxSupply: 1000 });
+const miner = createWallet();
+const alice = createWallet();
+
+chain.minePendingTransactions(miner.address);   // ⛏️ ここで新規コインが生み出される
+chain.addTransaction(
+  new Transaction(miner.address, alice.address, 30).sign(miner.privateKey)
+);
+chain.minePendingTransactions(miner.address);   // 送金を確定
+
+chain.getBalanceOfAddress(alice.address);       // 30
+chain.isChainValid();                           // true
+```
+
 ## テスト
 
 ```bash
@@ -112,6 +161,7 @@ GAS 固有 API（`GmailApp` / `UrlFetchApp` / `PropertiesService` / `LockService
 - `test/integration.test.js` — メール→Notion: 外部 API 呼び出しとフルフロー
 - `test/crypto-unit.test.js` — 仮想通貨ボット: 指標計算・シグナル判定・売買計算
 - `test/crypto-integration.test.js` — 仮想通貨ボット: CoinGecko / Notion 連携とフルフロー
+- `test/coin.test.js` — SasaCoin: 署名・マイニング・半減期・発行上限・改ざん検知
 
 ## メール→Notion: オリジナルからの主な改善点
 
