@@ -1,0 +1,19 @@
+{
+  "name": "hitsuji-shitsuji",
+  "version": "1.0.0",
+  "description": "デスクトップ AI キャラクター『ヒツジの執事』— Claude Sonnet 5 搭載。音声とチャットで会話できるデスクトップマスコット。",
+  "main": "src/main.js",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --enable-logging"
+  },
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.65.0"
+  },
+  "devDependencies": {
+    "electron": "^33.2.0"
+  }
+}

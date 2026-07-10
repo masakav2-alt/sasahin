@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;" />
+  <link rel="stylesheet" href="mascot.css" />
+  <title>メリー</title>
+</head>
+<body>
+  <div id="app">
+    <!-- 吹き出し（チャット表示＋入力） -->
+    <section id="bubble" class="bubble">
+      <div id="log" class="log" aria-live="polite"></div>
+      <div class="input-row">
+        <button id="mic" class="icon-btn" title="音声で話しかける">🎙</button>
+        <input id="text" type="text" placeholder="ご用件をどうぞ…" autocomplete="off" />
+        <button id="send" class="icon-btn send" title="送信">➤</button>
+      </div>
+    </section>
+
+    <!-- ヒツジの執事 -->
+    <div id="mascot" class="mascot" title="ドラッグで移動 / 右クリックでメニュー">
+      <svg viewBox="0 0 200 220" width="200" height="220" xmlns="http://www.w3.org/2000/svg" aria-label="ヒツジの執事メリー">
+        <defs>
+          <radialGradient id="wool" cx="50%" cy="40%" r="65%">
+            <stop offset="0%" stop-color="#ffffff" />
+            <stop offset="100%" stop-color="#e9ecf2" />
+          </radialGradient>
+          <linearGradient id="suit" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#3a4457" />
+            <stop offset="100%" stop-color="#232b3a" />
+          </linearGradient>
+        </defs>
+
+        <!-- 影 -->
+        <ellipse id="shadow" cx="100" cy="208" rx="52" ry="9" fill="rgba(0,0,0,0.18)" />
+
+        <g id="floaty">
+          <!-- スーツ（執事服） -->
+          <path d="M62 150 Q100 138 138 150 L150 205 Q100 218 50 205 Z" fill="url(#suit)" />
+          <path d="M92 148 L100 176 L108 148 Z" fill="#f4f6fb" />
+          <!-- 蝶ネクタイ -->
+          <path d="M100 150 L86 143 L86 159 Z" fill="#8a1f2b" />
+          <path d="M100 150 L114 143 L114 159 Z" fill="#8a1f2b" />
+          <circle cx="100" cy="151" r="3" fill="#5f1420" />
+
+          <!-- もこもこの体 -->
+          <g id="wool-body">
+            <circle cx="70" cy="150" r="20" fill="url(#wool)" />
+            <circle cx="100" cy="156" r="22" fill="url(#wool)" />
+            <circle cx="130" cy="150" r="20" fill="url(#wool)" />
+          </g>
+
+          <!-- もこもこ頭 -->
+          <g id="wool-head">
+            <circle cx="78" cy="74" r="16" fill="url(#wool)" />
+            <circle cx="100" cy="62" r="18" fill="url(#wool)" />
+            <circle cx="122" cy="74" r="16" fill="url(#wool)" />
+            <circle cx="70" cy="92" r="15" fill="url(#wool)" />
+            <circle cx="130" cy="92" r="15" fill="url(#wool)" />
+          </g>
+
+          <!-- 顔 -->
+          <ellipse cx="100" cy="96" rx="30" ry="27" fill="#f3ede6" />
+          <!-- 耳 -->
+          <ellipse cx="68" cy="92" rx="10" ry="6" fill="#e4d8c9" transform="rotate(-25 68 92)" />
+          <ellipse cx="132" cy="92" rx="10" ry="6" fill="#e4d8c9" transform="rotate(25 132 92)" />
+
+          <!-- 目（まばたき） -->
+          <g id="eyes">
+            <ellipse class="eye" cx="90" cy="94" rx="4.5" ry="5.5" fill="#2b2b2b" />
+            <ellipse class="eye" cx="110" cy="94" rx="4.5" ry="5.5" fill="#2b2b2b" />
+            <circle cx="91.5" cy="92" r="1.4" fill="#fff" />
+            <circle cx="111.5" cy="92" r="1.4" fill="#fff" />
+          </g>
+          <!-- モノクル（片眼鏡） -->
+          <circle cx="110" cy="94" r="10" fill="none" stroke="#c9a24b" stroke-width="1.6" />
+          <line x1="110" y1="104" x2="112" y2="120" stroke="#c9a24b" stroke-width="1" />
+
+          <!-- ほほ -->
+          <circle cx="82" cy="104" r="4" fill="#f7c9c0" opacity="0.7" />
+          <circle cx="118" cy="104" r="4" fill="#f7c9c0" opacity="0.7" />
+
+          <!-- 口（話すときに動く） -->
+          <path id="mouth" d="M92 108 Q100 112 108 108" fill="none" stroke="#8a5a4a" stroke-width="2" stroke-linecap="round" />
+
+          <!-- シルクハット -->
+          <g transform="translate(0,-2)">
+            <ellipse cx="100" cy="52" rx="30" ry="7" fill="#1a2130" />
+            <rect x="80" y="24" width="40" height="28" rx="4" fill="#1a2130" />
+            <rect x="80" y="42" width="40" height="6" fill="#8a1f2b" />
+          </g>
+        </g>
+      </svg>
+      <!-- 聞き取り中インジケータ -->
+      <div id="listening" class="listening" hidden>お聞きしております…</div>
+    </div>
+  </div>
+
+  <script src="mascot.js"></script>
+</body>
+</html>
