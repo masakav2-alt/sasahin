@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline';" />
+  <link rel="stylesheet" href="settings.css" />
+  <title>メリーの設定</title>
+</head>
+<body>
+  <h1>執事メリーの設定</h1>
+
+  <section>
+    <h2>Claude API</h2>
+    <label for="apiKey">APIキー</label>
+    <div class="row">
+      <input id="apiKey" type="password" placeholder="sk-ant-..." />
+      <button id="toggleKey" class="ghost" type="button">表示</button>
+    </div>
+    <p class="hint">
+      Anthropic コンソールで取得できます。環境変数 <code>ANTHROPIC_API_KEY</code> があればそちらが優先されます。
+      キーはこの端末内にのみ保存されます。
+    </p>
+
+    <label for="model">モデル</label>
+    <select id="model">
+      <option value="claude-sonnet-5">Claude Sonnet 5（推奨）</option>
+      <option value="claude-opus-4-8">Claude Opus 4.8（高性能）</option>
+      <option value="claude-haiku-4-5">Claude Haiku 4.5（高速・低コスト）</option>
+    </select>
+
+    <button id="test" class="ghost" type="button">接続テスト</button>
+    <span id="testResult" class="test-result"></span>
+  </section>
+
+  <section>
+    <h2>音声</h2>
+    <label class="checkbox">
+      <input id="voiceEnabled" type="checkbox" /> 応答を音声で読み上げる
+    </label>
+
+    <label for="voiceName">声（OSの音声）</label>
+    <select id="voiceName"><option value="">自動選択（日本語）</option></select>
+
+    <label for="rate">読み上げ速度 <span id="rateVal" class="val"></span></label>
+    <input id="rate" type="range" min="0.5" max="2" step="0.1" />
+
+    <label for="pitch">声の高さ <span id="pitchVal" class="val"></span></label>
+    <input id="pitch" type="range" min="0" max="2" step="0.1" />
+
+    <button id="preview" class="ghost" type="button">試聴</button>
+  </section>
+
+  <div class="actions">
+    <button id="save" class="primary" type="button">保存する</button>
+    <span id="saved" class="saved" hidden>保存しました</span>
+  </div>
+
+  <script src="settings.js"></script>
+</body>
+</html>
