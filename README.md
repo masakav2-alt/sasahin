@@ -1,10 +1,15 @@
-# sasahin — 問い合わせメール → Notion 自動登録
+# sasahin — 問い合わせメール → Notion 自動登録 / claude-gemini-router
 
 「問い合わせ」メールを **Gemini** で要約し、締切日を抽出して **Notion** データベースに
 自動登録する Google Apps Script です。時間主導型トリガーでの定期実行を想定しています。
 
 - 本体: [`src/Code.gs`](src/Code.gs)
 - テスト: [`test/`](test/)（Node.js 標準の `node:test` で実行）
+
+このリポジトリにはもう一つ、**Claude Code を Gemini に接続するルータープラグイン**
+[`router/`](router/README.md) も含まれています。Claude Code のリクエストを
+ローカルで受け止めて Gemini API に転送する、claude-code-router 型のプロキシです。
+詳細は [`router/README.md`](router/README.md) を参照してください。
 
 ## セットアップ
 
