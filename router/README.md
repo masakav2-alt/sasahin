@@ -27,14 +27,22 @@ Claude Code  --(Anthropic Messages API)-->  claude-gemini-router  --(Gemini API)
 export GEMINI_API_KEY="your_gemini_api_key"
 
 # 任意（省略時のデフォルト）
-export GEMINI_MODEL="gemini-2.0-flash"     # 既定の変換先モデル
+export GEMINI_MODEL="gemini-3.5-flash"      # 既定の変換先モデル
 export ROUTER_PORT=3456                     # 待受ポート
+export GEMINI_THINKING_BUDGET=0             # 内部思考トークン予算（0=無効化, -1=モデル任せ）
 
 # 任意: Claude のモデル名ごとに変換先 Gemini モデルを変えたい場合
-export GEMINI_MODEL_MAP='{"claude-3-5-sonnet-20241022":"gemini-2.0-flash","claude-3-5-haiku-20241022":"gemini-2.0-flash-lite"}'
+export GEMINI_MODEL_MAP='{"claude-3-5-sonnet-20241022":"gemini-3.5-flash","claude-3-5-haiku-20241022":"gemini-3.1-flash-lite"}'
 
 node router/bin/claude-gemini-router.js
 ```
+
+Gemini のモデル名は頻繁に更新されるため、`gemini-flash-latest` のような
+「常に最新版を指すエイリアス」も用意されていますが、新しいプレビュー版は
+一時的に混雑して `503` を返すことがあります。安定運用したい場合は
+`gemini-3.5-flash` のような具体的なバージョン名の指定を推奨します。
+利用可能なモデル一覧は `GET https://generativelanguage.googleapis.com/v1beta/models?key=YOUR_KEY`
+で確認できます。
 
 起動後、別のターミナルで Claude Code をこのルーター経由にします。
 
@@ -57,6 +65,16 @@ claude
     Anthropic 本来の課金カウントとは一致しません。
 
 これらは将来の拡張ポイントとして `src/translate.js` に集約してあります。
+
+### 実機検証で判明した注意点
+
+- Gemini の一部モデル（`gemini-3.5-flash` 等）は既定で内部思考（thinking）を
+  行い、その分のトークンも `max_tokens` の予算から消費します。`max_tokens` を
+  小さくしすぎると、本文を出力する前に予算を使い切って **空の応答** が
+  返ることがあります。本ルーターは既定で `GEMINI_THINKING_BUDGET=0`
+  （思考無効化）を設定してこれを回避していますが、必要に応じて調整してください。
+- Gemini のモデル名は廃止・置き換えが頻繁です。`404 model is no longer
+  available` エラーが出た場合は `GEMINI_MODEL` を現行モデルに変更してください。
 
 ## テスト
 

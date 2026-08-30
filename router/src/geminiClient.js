@@ -60,16 +60,22 @@ async function* streamGenerateContent(config, model, geminiReq) {
     throw err;
   }
 
+  // res.body のチャンクは Buffer とは限らない（undici の fetch は Uint8Array を返す）。
+  // Buffer.isBuffer では弾かれてしまい文字列化が壊れるため、TextDecoder で統一的にデコードする。
+  // { stream: true } を指定し、マルチバイト文字（日本語等）がチャンク境界で分断されても安全に扱う。
+  const decoder = new TextDecoder('utf-8');
   let buffer = '';
   for await (const chunk of res.body) {
-    buffer += Buffer.isBuffer(chunk) ? chunk.toString('utf8') : chunk;
+    buffer += typeof chunk === 'string' ? chunk : decoder.decode(chunk, { stream: true });
 
-    let sepIndex;
-    while ((sepIndex = buffer.indexOf('\n\n')) !== -1) {
-      const rawEvent = buffer.slice(0, sepIndex);
-      buffer = buffer.slice(sepIndex + 2);
+    // 実際の HTTP SSE ストリームは CRLF (\r\n) 改行で届く。チャンク境界で \r と \n が
+    // 分断される可能性があるため、正規化はせず蓄積済みバッファ全体に正規表現で区切りを探す。
+    let match;
+    while ((match = buffer.match(/\r?\n\r?\n/)) !== null) {
+      const rawEvent = buffer.slice(0, match.index);
+      buffer = buffer.slice(match.index + match[0].length);
 
-      const dataLine = rawEvent.split('\n').find(function (l) {
+      const dataLine = rawEvent.split(/\r?\n/).find(function (l) {
         return l.indexOf('data:') === 0;
       });
       if (!dataLine) continue;

@@ -34,7 +34,13 @@ function request(port, path, method, body) {
   });
 }
 
-const baseConfig = { apiBase: 'https://example.test/v1beta', apiKey: 'test-key', defaultModel: 'gemini-2.0-flash', modelMap: {} };
+const baseConfig = {
+  apiBase: 'https://example.test/v1beta',
+  apiKey: 'test-key',
+  defaultModel: 'gemini-2.0-flash',
+  modelMap: {},
+  thinkingBudget: 0
+};
 
 test('GET /health は 200 を返す', async () => {
   const server = await startTestServer(baseConfig);
@@ -59,15 +65,19 @@ test('未知のパスは 404 (Anthropic 形式のエラー)', async () => {
 });
 
 test('POST /v1/messages (非ストリーミング): Gemini 応答を Anthropic 形式に変換して返す', async () => {
-  global.fetch = mock.fn(async () => ({
-    ok: true,
-    status: 200,
-    text: async () =>
-      JSON.stringify({
-        candidates: [{ content: { parts: [{ text: 'こんにちは！' }] }, finishReason: 'STOP' }],
-        usageMetadata: { promptTokenCount: 3, candidatesTokenCount: 4 }
-      })
-  }));
+  let capturedBody;
+  global.fetch = mock.fn(async (url, init) => {
+    capturedBody = JSON.parse(init.body);
+    return {
+      ok: true,
+      status: 200,
+      text: async () =>
+        JSON.stringify({
+          candidates: [{ content: { parts: [{ text: 'こんにちは！' }] }, finishReason: 'STOP' }],
+          usageMetadata: { promptTokenCount: 3, candidatesTokenCount: 4 }
+        })
+    };
+  });
 
   const server = await startTestServer(baseConfig);
   try {
@@ -84,6 +94,8 @@ test('POST /v1/messages (非ストリーミング): Gemini 応答を Anthropic �
     assert.deepEqual(json.content, [{ type: 'text', text: 'こんにちは！' }]);
     assert.equal(json.stop_reason, 'end_turn');
     assert.deepEqual(json.usage, { input_tokens: 3, output_tokens: 4 });
+    // config.thinkingBudget が Gemini へのリクエストにも反映されていること
+    assert.deepEqual(capturedBody.generationConfig.thinkingConfig, { thinkingBudget: 0 });
   } finally {
     server.close();
   }

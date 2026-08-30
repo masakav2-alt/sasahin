@@ -84,6 +84,16 @@ test('buildGeminiRequest: system や generationConfig が無ければキー自�
   assert.equal('generationConfig' in req, false);
 });
 
+test('buildGeminiRequest: thinkingBudget を指定すると thinkingConfig に反映される', () => {
+  const req = buildGeminiRequest({ messages: [{ role: 'user', content: 'hi' }] }, { thinkingBudget: 0 });
+  assert.deepEqual(req.generationConfig.thinkingConfig, { thinkingBudget: 0 });
+});
+
+test('buildGeminiRequest: thinkingBudget 未指定なら thinkingConfig を作らない', () => {
+  const req = buildGeminiRequest({ max_tokens: 10, messages: [{ role: 'user', content: 'hi' }] });
+  assert.equal('thinkingConfig' in req.generationConfig, false);
+});
+
 test('mapFinishReason: 既知の値をマップし、未知の値は end_turn', () => {
   assert.equal(mapFinishReason('STOP'), 'end_turn');
   assert.equal(mapFinishReason('MAX_TOKENS'), 'max_tokens');

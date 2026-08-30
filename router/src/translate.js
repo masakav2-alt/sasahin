@@ -32,8 +32,12 @@ function anthropicRoleToGemini(role) {
 }
 
 // Anthropic Messages API リクエストを Gemini generateContent リクエストに変換。
-function buildGeminiRequest(anthropicReq) {
+// options.thinkingBudget: Gemini の内部思考トークン予算。
+//   小さい max_tokens だと思考だけで使い切り本文が空になることがあるため、
+//   既定では 0（無効化）にして通常のテキスト応答として振る舞わせる。
+function buildGeminiRequest(anthropicReq, options) {
   anthropicReq = anthropicReq || {};
+  options = options || {};
   const messages = Array.isArray(anthropicReq.messages) ? anthropicReq.messages : [];
 
   const contents = messages
@@ -63,6 +67,9 @@ function buildGeminiRequest(anthropicReq) {
   }
   if (Array.isArray(anthropicReq.stop_sequences) && anthropicReq.stop_sequences.length > 0) {
     generationConfig.stopSequences = anthropicReq.stop_sequences;
+  }
+  if (typeof options.thinkingBudget === 'number') {
+    generationConfig.thinkingConfig = { thinkingBudget: options.thinkingBudget };
   }
   if (Object.keys(generationConfig).length > 0) {
     geminiReq.generationConfig = generationConfig;

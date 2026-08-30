@@ -126,7 +126,7 @@ async function handleMessages(req, res, config) {
 
   const requestedModel = anthropicReq.model || config.defaultModel;
   const geminiModel = resolveGeminiModel(config, requestedModel);
-  const geminiReq = buildGeminiRequest(anthropicReq);
+  const geminiReq = buildGeminiRequest(anthropicReq, { thinkingBudget: config.thinkingBudget });
   const messageId = 'msg_' + crypto.randomUUID();
 
   if (anthropicReq.stream) {
