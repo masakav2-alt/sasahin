@@ -1,0 +1,17 @@
+{
+  "name": "kimidoko",
+  "version": "1.0.0",
+  "description": "在席管理(きみどこ風)システム - 部署別の在席ボード・ステータス・行動予定・お気に入り",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "node --test"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "@electric-sql/pglite": "^0.5.8",
+    "express": "^5.2.1",
+    "pg": "^8.23.1"
+  }
+}

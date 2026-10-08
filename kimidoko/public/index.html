@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>きみどこ 在席ボード</title>
+<style>
+:root{--bg:#f4f6f9;--card:#fff;--fg:#1d2733;--mute:#6b7785;--line:#dfe4ea;--pri:#2f6fed}
+@media (prefers-color-scheme:dark){:root{--bg:#14181d;--card:#1d242c;--fg:#e8edf2;--mute:#97a3b0;--line:#2c3640}}
+*{box-sizing:border-box}body{margin:0;font:14px/1.5 system-ui,"Hiragino Sans","Noto Sans JP",sans-serif;background:var(--bg);color:var(--fg)}
+header{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:10px 16px;background:var(--card);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5}
+header h1{font-size:16px;margin:0 12px 0 0}
+select,input,button,textarea{font:inherit;color:inherit;background:var(--card);border:1px solid var(--line);border-radius:6px;padding:5px 8px}
+button{cursor:pointer}button.pri{background:var(--pri);color:#fff;border-color:var(--pri)}button.danger{color:#d9534f}
+main{padding:16px;max-width:1200px;margin:auto}
+.dept{margin-bottom:20px}.dept h2{font-size:14px;margin:0 0 8px;color:var(--mute)}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:10px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 12px;border-left:6px solid var(--c,#999)}
+.card .top{display:flex;align-items:center;gap:6px}.name{font-weight:600;flex:1}
+.star{border:0;background:none;font-size:18px;padding:0 2px;color:#bbb}.star.on{color:#f0b429}
+.chip{display:inline-flex;align-items:center;gap:4px;padding:2px 10px;border-radius:12px;color:#fff;font-size:12px;background:var(--c,#999);margin-top:4px;cursor:pointer;border:0}
+.chip img{width:14px;height:14px}
+.sub{font-size:12px;color:var(--mute);margin-top:4px}
+.me{outline:2px solid var(--pri)}
+dialog{border:1px solid var(--line);border-radius:12px;background:var(--card);color:var(--fg);width:min(560px,94vw)}
+dialog::backdrop{background:#0006}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0;align-items:center}
+.pick{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:6px}
+.pick button{border-left:6px solid var(--c);text-align:left}
+table{width:100%;border-collapse:collapse}td,th{padding:4px 6px;border-bottom:1px solid var(--line);text-align:left;font-size:13px}
+.tabs button.act{background:var(--pri);color:#fff}
+#toast{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:#222;color:#fff;padding:8px 16px;border-radius:8px;display:none}
+</style>
+</head>
+<body>
+<header>
+  <h1>📍 きみどこ</h1>
+  <label>私は <select id="me"></select></label>
+  <select id="fDept"><option value="">全部署</option></select>
+  <select id="fStatus"><option value="">全ステータス</option></select>
+  <input id="fQ" type="search" placeholder="氏名検索">
+  <label><input id="fFav" type="checkbox"> お気に入りのみ</label>
+  <span style="flex:1"></span>
+  <button id="btnAdmin">管理</button>
+</header>
+<main id="board"></main>
+
+<dialog id="dlgUser">
+  <h3 id="uName"></h3>
+  <div class="row tabs"><button data-t="status" class="act">ステータス変更</button><button data-t="sched">行動予定</button></div>
+  <div id="tabStatus"><p class="sub" id="proxyNote"></p><div class="pick" id="pick"></div></div>
+  <div id="tabSched" hidden>
+    <table id="schedTbl"></table>
+    <div class="row"><select id="sStatus"></select>
+      <input id="sStart" type="datetime-local"> 〜 <input id="sEnd" type="datetime-local"></div>
+    <div class="row"><input id="sNote" placeholder="行き先・備考" style="flex:1"><button class="pri" id="sAdd">予定追加</button></div>
+    <details><summary>カレンダー(.ics)取り込み (Google / Outlook)</summary>
+      <div class="row"><select id="icsSrc"><option>google</option><option>outlook</option></select>
+      <select id="icsStatus"></select><input type="file" id="icsFile" accept=".ics"></div></details>
+  </div>
+  <div class="row"><span style="flex:1"></span><button onclick="dlgUser.close()">閉じる</button></div>
+</dialog>
+
+<dialog id="dlgAdmin">
+  <h3>管理</h3>
+  <h4>ステータスマスタ <span class="sub" id="stCount"></span></h4>
+  <table id="stTbl"></table>
+  <div class="row"><input id="nsName" placeholder="名前"><input id="nsColor" type="color" value="#4a90e2">
+    <input id="nsIcon" placeholder="アイコンURL/絵文字"><button id="nsAdd" class="pri">追加</button></div>
+  <h4>部署</h4>
+  <table id="dpTbl"></table>
+  <div class="row"><input id="ndName" placeholder="部署名"><button id="ndAdd" class="pri">追加</button></div>
+  <h4>ユーザー追加</h4>
+  <div class="row"><input id="nuName" placeholder="氏名"><input id="nuMail" placeholder="メール"><select id="nuDept"></select>
+    <button id="nuAdd" class="pri">追加</button></div>
+  <div class="row"><span style="flex:1"></span><button onclick="dlgAdmin.close()">閉じる</button></div>
+</dialog>
+<div id="toast"></div>
+
+<script>
+const $ = (s) => document.querySelector(s);
+const api = async (m, p, b) => {
+  const r = await fetch('/api' + p, { method: m, headers: { 'content-type': 'application/json' }, body: b ? JSON.stringify(b) : undefined });
+  if (!r.ok) { const e = await r.json().catch(() => ({})); toast(e.error || 'エラー'); throw new Error(e.error); }
+  return r.status === 204 ? null : r.json();
+};
+const toast = (m) => { const t = $('#toast'); t.textContent = m; t.style.display = 'block'; setTimeout(() => t.style.display = 'none', 2500); };
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const fmt = (d) => d ? new Date(d).toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
+const icon = (s) => !s?.icon_url ? '' : /^(https?:)?\//.test(s.icon_url) ? `<img src="${esc(s.icon_url)}" alt="">` : esc(s.icon_url);
+
+let statuses = [], depts = [], users = [], favs = new Set(), cur = null;
+const stOf = (id) => statuses.find((s) => s.id === id);
+const meId = () => Number($('#me').value) || null;
+
+async function loadMaster() {
+  [statuses, depts, users] = await Promise.all([api('GET', '/statuses'), api('GET', '/departments'), api('GET', '/users')]);
+  const me = $('#me').value;
+  $('#me').innerHTML = users.map((u) => `<option value="${u.id}">${esc(u.name)}</option>`).join('');
+  if (me) $('#me').value = me;
+  const fd = $('#fDept').value, fs = $('#fStatus').value;
+  $('#fDept').innerHTML = '<option value="">全部署</option>' + depts.map((d) => `<option value="${d.id}">${esc(d.name)}</option>`).join('');
+  $('#fStatus').innerHTML = '<option value="">全ステータス</option>' + statuses.map((s) => `<option value="${s.id}">${esc(s.name)}</option>`).join('');
+  $('#fDept').value = fd; $('#fStatus').value = fs;
+  const opts = statuses.map((s) => `<option value="${s.id}">${esc(s.name)}</option>`).join('');
+  $('#sStatus').innerHTML = opts; $('#icsStatus').innerHTML = opts;
+  $('#nuDept').innerHTML = depts.map((d) => `<option value="${d.id}">${esc(d.name)}</option>`).join('');
+}
+async function loadFavs() { favs = new Set(meId() ? await api('GET', `/users/${meId()}/favorites`) : []); }
+
+async function render() {
+  const p = new URLSearchParams();
+  if ($('#fDept').value) p.set('department_id', $('#fDept').value);
+  if ($('#fStatus').value) p.set('status_id', $('#fStatus').value);
+  if ($('#fQ').value) p.set('q', $('#fQ').value);
+  if ($('#fFav').checked && meId()) p.set('favorites_of', meId());
+  const { departments } = await api('GET', '/board?' + p);
+  $('#board').innerHTML = departments.map((d) => `<section class="dept"><h2>${esc(d.name)}</h2><div class="grid">` +
+    d.members.map((m) => {
+      const s = stOf(m.current_status_id), n = m.next_schedule, c = m.current_schedule;
+      return `<div class="card ${m.id === meId() ? 'me' : ''}" style="--c:${s?.color_code || '#999'}">
+        <div class="top"><span class="name">${esc(m.name)}</span>
+          ${m.id !== meId() ? `<button class="star ${favs.has(m.id) ? 'on' : ''}" data-fav="${m.id}" title="お気に入り">★</button>` : ''}</div>
+        <button class="chip" data-user="${m.id}" style="--c:${s?.color_code || '#999'}">${icon(s)} ${esc(s?.name ?? '未設定')}</button>
+        ${c ? `<div class="sub">📌 ${esc(stOf(c.status_id)?.name)} ${fmt(c.start_time)}〜${fmt(c.end_time)} ${esc(c.note)}</div>` : ''}
+        ${n ? `<div class="sub">次: ${fmt(n.start_time)} ${esc(stOf(n.status_id)?.name)} ${esc(n.note)}</div>` : ''}
+        <div class="sub">更新 ${fmt(m.status_updated_at)}${m.proxy_updated ? ` (${esc(m.updated_by_name)}が代理)` : ''}</div></div>`;
+    }).join('') + '</div></section>').join('') || '<p class="sub">該当するメンバーがいません</p>';
+}
+
+$('#board').addEventListener('click', async (e) => {
+  const f = e.target.closest('[data-fav]');
+  if (f) {
+    const id = Number(f.dataset.fav);
+    await api(favs.has(id) ? 'DELETE' : 'PUT', `/users/${meId()}/favorites/${id}`);
+    await loadFavs(); return render();
+  }
+  const u = e.target.closest('[data-user]');
+  if (u) openUser(Number(u.dataset.user));
+});
+
+function openUser(id) {
+  cur = users.find((x) => x.id === id);
+  $('#uName').textContent = cur.name;
+  $('#proxyNote').textContent = cur.id === meId() ? '' : `${cur.name} さんのステータスを ${users.find((x) => x.id === meId())?.name} が代理で変更します`;
+  $('#pick').innerHTML = statuses.map((s) => `<button data-s="${s.id}" style="--c:${s.color_code}">${icon(s)} ${esc(s.name)}</button>`).join('');
+  showTab('status'); dlgUser.showModal();
+}
+function showTab(t) {
+  $('#tabStatus').hidden = t !== 'status'; $('#tabSched').hidden = t !== 'sched';
+  document.querySelectorAll('.tabs button').forEach((b) => b.classList.toggle('act', b.dataset.t === t));
+  if (t === 'sched') loadSched();
+}
+document.querySelectorAll('.tabs button').forEach((b) => b.onclick = () => showTab(b.dataset.t));
+$('#pick').onclick = async (e) => {
+  const b = e.target.closest('[data-s]'); if (!b) return;
+  await api('PUT', `/users/${cur.id}/status`, { status_id: Number(b.dataset.s), updated_by: meId() });
+  dlgUser.close(); render();
+};
+async function loadSched() {
+  const rows = await api('GET', `/users/${cur.id}/schedules?from=${new Date().toISOString()}`);
+  $('#schedTbl').innerHTML = rows.map((r) => `<tr><td>${fmt(r.start_time)}〜${fmt(r.end_time)}</td><td>${esc(stOf(r.status_id)?.name)}</td>
+    <td>${esc(r.note)} <span class="sub">${esc(r.source)}</span></td><td><button class="danger" data-del="${r.id}">削除</button></td></tr>`).join('') || '<tr><td class="sub">予定なし</td></tr>';
+}
+$('#schedTbl').onclick = async (e) => { const d = e.target.dataset.del; if (d) { await api('DELETE', `/schedules/${d}`); loadSched(); render(); } };
+$('#sAdd').onclick = async () => {
+  await api('POST', `/users/${cur.id}/schedules`, { status_id: Number($('#sStatus').value),
+    start_time: $('#sStart').value && new Date($('#sStart').value), end_time: $('#sEnd').value ? new Date($('#sEnd').value) : null, note: $('#sNote').value });
+  $('#sNote').value = ''; loadSched(); render();
+};
+$('#icsFile').onchange = async (e) => {
+  const f = e.target.files[0]; if (!f) return;
+  const r = await api('POST', `/users/${cur.id}/schedules/import-ics`, { ics: await f.text(), status_id: Number($('#icsStatus').value), source: $('#icsSrc').value });
+  toast(`${r.imported}件取り込みました`); e.target.value = ''; loadSched();
+};
+
+// 管理
+async function renderAdmin() {
+  $('#stCount').textContent = `(${statuses.length}/30)`;
+  $('#stTbl').innerHTML = statuses.map((s) => `<tr><td>${icon(s)}</td><td><span class="chip" style="--c:${s.color_code}">${esc(s.name)}</span></td>
+    <td><button class="danger" data-ds="${s.id}">削除</button></td></tr>`).join('');
+  $('#dpTbl').innerHTML = depts.map((d) => `<tr><td>${esc(d.name)}</td><td><button class="danger" data-dd="${d.id}">削除</button></td></tr>`).join('');
+}
+$('#btnAdmin').onclick = async () => { await renderAdmin(); dlgAdmin.showModal(); };
+$('#dlgAdmin').addEventListener('click', async (e) => {
+  const ds = e.target.dataset.ds, dd = e.target.dataset.dd;
+  if (ds) await api('DELETE', `/statuses/${ds}`); else if (dd) await api('DELETE', `/departments/${dd}`); else return;
+  await loadMaster(); renderAdmin(); render();
+});
+$('#nsAdd').onclick = async () => { await api('POST', '/statuses', { name: $('#nsName').value, color_code: $('#nsColor').value, icon_url: $('#nsIcon').value || null }); $('#nsName').value = ''; await loadMaster(); renderAdmin(); };
+$('#ndAdd').onclick = async () => { await api('POST', '/departments', { name: $('#ndName').value }); $('#ndName').value = ''; await loadMaster(); renderAdmin(); };
+$('#nuAdd').onclick = async () => { await api('POST', '/users', { name: $('#nuName').value, email: $('#nuMail').value, department_id: Number($('#nuDept').value) || null });
+  $('#nuName').value = $('#nuMail').value = ''; await loadMaster(); render(); toast('追加しました'); };
+
+['fDept', 'fStatus', 'fFav'].forEach((i) => $('#' + i).onchange = render);
+$('#fQ').oninput = render;
+$('#me').onchange = async () => { await loadFavs(); render(); };
+
+(async () => { await loadMaster(); await loadFavs(); await render(); setInterval(render, 15000); })();
+</script>
+</body>
+</html>
